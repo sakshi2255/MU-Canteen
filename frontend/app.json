@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "MU Canteen",
+    "slug": "mu-canteen",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#079FA7"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.marwadiuniversity.mucanteen"
+    },
+    "android": {
+      "package": "com.marwadiuniversity.mucanteen",
+      "googleServicesFile": "./google-services.json",
+      "adaptiveIcon": {
+        "backgroundColor": "#079FA7",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}

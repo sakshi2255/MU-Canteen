@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "231604059707",
+    "project_id": "mu-canteen-b895a",
+    "storage_bucket": "mu-canteen-b895a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:231604059707:android:cabf8e38c301d1a3fc261e",
+        "android_client_info": {
+          "package_name": "com.marwadiuniversity.mucanteen"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBID6aEpDYUdZPW-Dq1lhOaMLtIbeo-Rng"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

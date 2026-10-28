@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Expo & Metro
+.expo/
+frontend/.expo/
+dist/
+frontend/dist/
+web-build/
+.dist/
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+.metro-health-check*
+
+# Debug & logs
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# OS & Temp
+.DS_Store
+Thumbs.db
+*.pem
+
+# TypeScript
+*.tsbuildinfo
+
+# Local envs
+.env*.local
+
+# Firebase / Functions build
+backend/functions/lib/

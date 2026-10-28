@@ -1,0 +1,136 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- Helper Functions ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function getUserRole() {
+      return getUserData().role;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && getUserRole() == 'admin';
+    }
+
+    function isOperator() {
+      return isSignedIn() && getUserRole() == 'operator';
+    }
+
+    function isAssignedOperator(canteenId) {
+      return isAdmin() || (
+        isOperator() &&
+        canteenId in getUserData().assignedCanteenIds
+      );
+    }
+
+    // --- Users Collection ---
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      // Students cannot promote themselves to admin
+      allow create: if isSignedIn() && request.auth.uid == userId &&
+        (request.resource.data.role != 'admin' || isAdmin());
+      allow update: if isSignedIn() && (
+        isAdmin() || (
+          request.auth.uid == userId &&
+          request.resource.data.role == resource.data.role &&
+          request.resource.data.accountStatus == resource.data.accountStatus
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    // --- Campus Buildings & Floors ---
+    match /buildings/{buildingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // --- Canteens ---
+    match /canteens/{canteenId} {
+      allow read: if isSignedIn();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || isAssignedOperator(canteenId);
+    }
+
+    // --- Menu Items ---
+    match /menuItems/{itemId} {
+      allow read: if isSignedIn();
+      allow create, delete: if isAdmin() || isAssignedOperator(request.resource.data.canteenId);
+      allow update: if isAdmin() || isAssignedOperator(resource.data.canteenId);
+    }
+
+    // --- Orders Collection ---
+    match /orders/{orderId} {
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isAssignedOperator(resource.data.canteenId) ||
+        isAdmin()
+      );
+
+      // Student places order
+      allow create: if isSignedIn() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.orderStatus in ['awaiting_acceptance', 'accepted'];
+
+      // State transitions validation
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        // Operator actions: Accept, Reject, Prepare, Ready, Pickup
+        (
+          isAssignedOperator(resource.data.canteenId) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'orderStatus', 'isTokenVerified', 'updatedAt', 'rejectionReason', 'paymentStatus'
+          ])
+        ) ||
+        // Student cancellation ONLY before kitchen preparation begins
+        (
+          resource.data.userId == request.auth.uid &&
+          request.resource.data.orderStatus == 'cancelled' &&
+          resource.data.orderStatus in ['awaiting_acceptance', 'accepted'] &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'orderStatus', 'cancellationRequestedAt', 'cancellationReason', 'updatedAt', 'paymentStatus'
+          ])
+        )
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // --- Order Events (Immutable Append-Only Audit Trail) ---
+    match /orderEvents/{eventId} {
+      allow read: if isSignedIn() && (
+        isAdmin() ||
+        isOperator() ||
+        resource.data.actorId == request.auth.uid
+      );
+      allow create: if isSignedIn();
+      allow update, delete: if false; // Immutable!
+    }
+
+    // --- Campus & Canteen Settings ---
+    match /settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /canteenSettings/{canteenId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || isAssignedOperator(canteenId);
+    }
+
+    // --- Audit Logs ---
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn();
+      allow update, delete: if false; // Tamper-evident
+    }
+  }
+}
+
