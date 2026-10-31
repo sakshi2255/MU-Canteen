@@ -367,7 +367,15 @@ export const CartScreen: React.FC<CartScreenProps> = ({ navigation }) => {
           setPolicyModalVisible(false);
           navigation.navigate('CheckoutScreen');
         }}
-        onDecline={() => setPolicyModalVisible(false)}
+        onDecline={() => {
+          setPolicyModalVisible(false);
+          setOrderType('instant');
+          setSelectedSlot(null);
+          Alert.alert(
+            'Preorder Policy Declined',
+            'Preorder pickup slot was not reserved. Order mode has been reverted to Instant Order.'
+          );
+        }}
       />
 
       {/* Custom Pickup Time Modal */}

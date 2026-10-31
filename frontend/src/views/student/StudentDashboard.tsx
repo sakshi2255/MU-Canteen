@@ -17,10 +17,13 @@ import {
   Lock,
   Building2,
   Layers,
+  FileText,
+  User as UserIcon,
 } from 'lucide-react-native';
 import { Header } from '../../components/common/Header';
 import { Card } from '../../components/common/Card';
 import { Badge } from '../../components/common/Badge';
+import { CompactNavGrid, NavCardItem } from '../../components/common/CompactNavGrid';
 import { DemoRoleSwitcherModal } from '../../components/common/DemoRoleSwitcherModal';
 import { Colors } from '../../theme/colors';
 import { Spacing, BorderRadius, Shadows } from '../../theme/spacing';
@@ -123,6 +126,48 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ navigation }
     return true;
   });
 
+  const navCards: NavCardItem[] = [
+    {
+      id: 'browse',
+      label: 'Browse Canteens',
+      subtitle: `${canteens.length} Food Courts`,
+      icon: <Store size={18} color={Colors.primary} />,
+      onPress: () => navigation.navigate('DirectoryTab'),
+    },
+    {
+      id: 'cart',
+      label: 'My Cart',
+      subtitle: itemCount > 0 ? `${itemCount} items` : 'Empty',
+      icon: <ShoppingBag size={18} color={Colors.primary} />,
+      badge: itemCount > 0 ? itemCount : undefined,
+      badgeVariant: 'danger',
+      onPress: () => navigation.navigate('CartTab'),
+    },
+    {
+      id: 'active',
+      label: 'Current Orders',
+      subtitle: activeOrders.length > 0 ? `${activeOrders.length} In Progress` : '0 Active',
+      icon: <Clock size={18} color={Colors.primary} />,
+      badge: activeOrders.length > 0 ? activeOrders.length : undefined,
+      badgeVariant: 'warning',
+      onPress: () => navigation.navigate('OrdersTab'),
+    },
+    {
+      id: 'history',
+      label: 'Order History',
+      subtitle: 'Past Receipts',
+      icon: <FileText size={18} color={Colors.primary} />,
+      onPress: () => navigation.navigate('OrdersTab'),
+    },
+    {
+      id: 'profile',
+      label: 'My Profile',
+      subtitle: user?.displayName || 'Student Profile',
+      icon: <UserIcon size={18} color={Colors.primary} />,
+      onPress: () => navigation.navigate('ProfileTab'),
+    },
+  ];
+
   const handleCanteenPress = (canteen: Canteen) => {
     const isRestricted =
       canteen.canteenType === 'faculty_only' && role !== 'faculty' && role !== 'admin';
@@ -187,7 +232,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ navigation }
             <View style={styles.activeOrderFooter}>
               <Text style={styles.statusCurrentText}>
                 Status: <Text style={{ fontWeight: '700', color: Colors.primaryDark }}>
-                  {activeOrders[0].orderStatus.toUpperCase().replace('_', ' ')}
+                  {activeOrders[0].orderStatus === 'awaiting_acceptance' ? 'IN QUEUE' : activeOrders[0].orderStatus.toUpperCase().replace('_', ' ')}
                 </Text>
               </Text>
               <View style={styles.trackAction}>
@@ -197,6 +242,9 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ navigation }
             </View>
           </TouchableOpacity>
         )}
+
+        {/* Compact Navigation Cards - Marwadi University Style */}
+        <CompactNavGrid title="Portal Quick Access" items={navCards} />
 
         {/* Clean University Search Box */}
         <View style={styles.searchSection}>

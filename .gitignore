@@ -31,8 +31,14 @@ Thumbs.db
 # TypeScript
 *.tsbuildinfo
 
-# Local envs
+# Local envs & credentials
+.env
 .env*.local
+!.env.example
+
+# Android & iOS generated outputs
+frontend/android/
+frontend/ios/
 
 # Firebase / Functions build
 backend/functions/lib/

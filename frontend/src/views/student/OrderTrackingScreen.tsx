@@ -84,8 +84,7 @@ export const OrderTrackingScreen: React.FC<OrderTrackingScreenProps> = ({ route,
   }
 
   const steps: { key: OrderStatus; label: string }[] = [
-    { key: 'awaiting_acceptance', label: 'Received' },
-    { key: 'accepted', label: 'Accepted' },
+    { key: 'awaiting_acceptance', label: 'In Queue' },
     { key: 'preparing', label: 'Preparing' },
     { key: 'ready_for_pickup', label: 'Ready' },
     { key: 'picked_up', label: 'Collected' },
@@ -96,13 +95,12 @@ export const OrderTrackingScreen: React.FC<OrderTrackingScreenProps> = ({ route,
       case 'awaiting_acceptance':
         return 0;
       case 'accepted':
-        return 1;
       case 'preparing':
-        return 2;
+        return 1;
       case 'ready_for_pickup':
-        return 3;
+        return 2;
       case 'picked_up':
-        return 4;
+        return 3;
       default:
         return -1;
     }
@@ -110,7 +108,7 @@ export const OrderTrackingScreen: React.FC<OrderTrackingScreenProps> = ({ route,
 
   const currentIndex = getStepIndex(order.orderStatus);
   const isTerminalNegative = ['rejected', 'cancelled', 'expired'].includes(order.orderStatus);
-  const canCancel = order.orderStatus === 'awaiting_acceptance' || order.orderStatus === 'accepted';
+  const canCancel = order.orderStatus === 'awaiting_acceptance';
 
   // 12-min collection window + 10-min late timer calculations
   const calculateTimerState = () => {

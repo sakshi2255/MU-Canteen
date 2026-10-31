@@ -22,6 +22,7 @@ import { Header } from '../../components/common/Header';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
+import { CompactNavGrid, NavCardItem } from '../../components/common/CompactNavGrid';
 import { DemoRoleSwitcherModal } from '../../components/common/DemoRoleSwitcherModal';
 import { Colors } from '../../theme/colors';
 import { Spacing, BorderRadius, Shadows } from '../../theme/spacing';
@@ -109,74 +110,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ navigation }) =>
           </Card>
         </View>
 
-        {/* Administration Modules Grid */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>GOVERNANCE MODULES</Text>
-
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('CampusManagementScreen')}
-            style={styles.moduleCard}
-          >
-            <View style={[styles.moduleIconBox, { backgroundColor: Colors.primaryLight }]}>
-              <Building2 size={22} color={Colors.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.moduleTitle}>Campus & Canteen Management</Text>
-              <Text style={styles.moduleDesc}>
-                Configure buildings, floor points, faculty-only restrictions, and operator assignments.
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('UserManagementScreen')}
-            style={styles.moduleCard}
-          >
-            <View style={[styles.moduleIconBox, { backgroundColor: '#EFF6FF' }]}>
-              <Users size={22} color="#2563EB" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.moduleTitle}>User Roles & Account Controls</Text>
-              <Text style={styles.moduleDesc}>
-                Assign roles (student, faculty, operator, admin) and enable/disable accounts.
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('SystemSettingsScreen')}
-            style={styles.moduleCard}
-          >
-            <View style={[styles.moduleIconBox, { backgroundColor: '#FFFBEB' }]}>
-              <Settings size={22} color="#D97706" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.moduleTitle}>Policy & Pickup Slot Settings</Text>
-              <Text style={styles.moduleDesc}>
-                Configure preorder grace periods, policy texts, versioning, and university details.
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('AuditLogsScreen')}
-            style={styles.moduleCard}
-          >
-            <View style={[styles.moduleIconBox, { backgroundColor: '#FEF2F2' }]}>
-              <ShieldAlert size={22} color={Colors.danger} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.moduleTitle}>Security & Audit Logs</Text>
-              <Text style={styles.moduleDesc}>
-                Review tamper-evident logs for orders, status transitions, role edits, and token verifications.
-              </Text>
-            </View>
-          </TouchableOpacity>
-        </View>
+        {/* Compact Administrator Navigation Cards */}
+        <CompactNavGrid
+          title="Governance Modules"
+          items={[
+            {
+              id: 'campus',
+              label: 'Campus Management',
+              subtitle: `${buildings.length} Academic Buildings`,
+              icon: <Building2 size={18} color={Colors.primary} />,
+              onPress: () => navigation.navigate('CampusManagementScreen'),
+            },
+            {
+              id: 'canteens',
+              label: 'Canteen Management',
+              subtitle: `${canteens.length} Food Courts`,
+              icon: <Store size={18} color={Colors.primary} />,
+              badge: `${openCanteensCount} Open`,
+              badgeVariant: 'success',
+              onPress: () => navigation.navigate('CampusManagementScreen'),
+            },
+            {
+              id: 'users',
+              label: 'User Management',
+              subtitle: 'Roles & Profiles',
+              icon: <Users size={18} color={Colors.primary} />,
+              badge: usersCount > 0 ? usersCount : undefined,
+              badgeVariant: 'primary',
+              onPress: () => navigation.navigate('UserManagementScreen'),
+            },
+            {
+              id: 'settings',
+              label: 'System Settings',
+              subtitle: 'Policies & Slots',
+              icon: <Settings size={18} color={Colors.primary} />,
+              onPress: () => navigation.navigate('SystemSettingsScreen'),
+            },
+            {
+              id: 'audit',
+              label: 'Audit Logs',
+              subtitle: 'Security Trail',
+              icon: <ShieldAlert size={18} color={Colors.primary} />,
+              badge: 'Security',
+              badgeVariant: 'danger',
+              onPress: () => navigation.navigate('AuditLogsScreen'),
+            },
+          ]}
+        />
 
         {/* Canteen Status List */}
         <View style={styles.section}>

@@ -268,9 +268,9 @@ class DemoStorageEngine {
     const pickupToken = generatePickupToken();
     const now = new Date().toISOString();
 
-    // Auto-acceptance rule check
+    // Auto-acceptance rule check: if auto-accept, order goes straight to 'preparing'
     const initialStatus: OrderStatus =
-      canteen.acceptanceMode === 'auto' ? 'accepted' : 'awaiting_acceptance';
+      canteen.acceptanceMode === 'auto' ? 'preparing' : 'awaiting_acceptance';
 
     const newOrder: Order = {
       orderId,
@@ -461,13 +461,14 @@ class DemoStorageEngine {
   private validateTransition(from: OrderStatus, to: OrderStatus): void {
     if (from === to) return;
     const allowedTransitions: Record<OrderStatus, OrderStatus[]> = {
-      awaiting_acceptance: ['accepted', 'rejected', 'cancelled', 'expired'],
+      // Direct Accept moves from awaiting_acceptance straight to preparing
+      awaiting_acceptance: ['preparing', 'accepted', 'rejected', 'cancelled', 'expired'],
       accepted: ['preparing', 'cancelled', 'rejected'],
       preparing: ['ready_for_pickup'],
       ready_for_pickup: ['picked_up', 'uncollected'],
       picked_up: [],
       rejected: [],
-      cancellation_requested: ['cancelled', 'accepted', 'rejected'],
+      cancellation_requested: ['cancelled', 'rejected'],
       cancelled: [],
       uncollected: [],
       expired: [],

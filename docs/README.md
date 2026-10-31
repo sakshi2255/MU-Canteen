@@ -15,19 +15,21 @@ A centralized campus canteen mobile application developed for **Marwadi Universi
 MU Canteen is a genuine React Native mobile application for Android (with cross-platform iOS compatibility), built with modular MVC architecture, Firebase integration, and a zero-configuration Local Demo Mode.
 
 ### 👥 Four University Roles
-1. **Student:** Browse campus canteens, filter by floor, place instant/preorders, accept 10-minute grace period policy, live tracking with visual stepper, view pickup tokens, cancel before preparation.
+1. **Student:** Browse campus canteens, filter by building and floor, place instant/preorders, accept 10-minute grace period policy, live tracking with visual stepper, view pickup tokens, cancel before preparation.
 2. **Faculty / Staff:** All student ordering features with access to restricted venues like the **Faculty Executive Lounge (Main Bldg Floor 3)**.
-3. **Canteen Operator:** Manage assigned canteens, open/close with pre-opening menu availability review, live kitchen order queue, advance preparation status (`Accepted` ➔ `Preparing` ➔ `Ready` ➔ `Picked Up`), counter pickup token verification with duplicate protection, operational reports.
+3. **Canteen Operator:** Manage assigned canteens, open/close with pre-opening menu availability review, live kitchen order queue with linear workflow (`Accept / Decline → Ready → Collected`), counter pickup token verification with duplicate protection, operational reports.
 4. **College Administrator:** Campus buildings and floor management, canteen configuration (types: standard, faculty-only, stationery, hostel mess), user role assignment, preorder grace-period defaults, tamper-evident security audit logs.
 
 ### 🏛️ Campus Structure (Configurable Seed Data)
-- **Main Academic Building (Floors 1–6):**
+- **Main Academic Building (Floors 1–6 + Annexes):**
   - Floor 1: Stationery & Quick Bites (Puffs, Tea, Samosas, Notebooks, Pens)
   - Floor 2: Central Campus Canteen (Sandwiches, Gujarati Thali, Cold Coffee, Meals)
   - Floor 3: Faculty Executive Lounge (Reserved for Faculty & Staff)
   - Floor 4: South Indian & Juices Hub (Mysore Masala Dosa, Idli Sambhar, Mosambi Juice)
   - Floor 5: Snack Bar & Bakehouse (Fudge Brownies, Veg Burgers)
   - Floor 6: Skyline Rooftop Cafe
+  - West Wing Annex: Express Tea & Coffee Bar
+  - East Wing Atrium: Healthy Salad & Fresh Juice Bar
 - **Faculty of Law Building:** Law Building Canteen
 - **Campus Hostel Block A:** Hostel Mess Point (Resident pass eligibility)
 
@@ -41,7 +43,7 @@ Aligned with the **Marwadi University student portal** visual style:
 - **Backgrounds:** Clean `#F8FAFC` & White surfaces `#FFFFFF`
 - **Text:** Dark charcoal `#1E293B` & Muted grey `#64748B`
 - **Icons:** Thin-line icons via `lucide-react-native`
-- **Restrained Status Badges:** Green (Success / Open), Amber (Pending / Prep), Red (Danger / Closed)
+- **Compact Navigation Cards:** Grid navigation across all three role dashboards
 
 ---
 
@@ -58,7 +60,7 @@ Aligned with the **Marwadi University student portal** visual style:
 cd frontend
 npm install
 
-# Backend dependencies (if working with Cloud Functions)
+# Backend dependencies (for Cloud Functions and seeding)
 cd ../backend/functions
 npm install
 cd ../..
@@ -86,17 +88,19 @@ npm run web
 Both frontend and backend contain automated unit test suites covering the core business logic, cart invariants, token validation, and security rules:
 
 ```bash
-# Run all tests
+# 1. Run frontend unit tests (13/13 tests)
+cd frontend
 npm test
 
-# Run frontend unit tests
-npm run frontend:test
+# 2. Run frontend TypeScript typecheck (0 errors)
+npm run typecheck
 
-# Run backend security & state machine tests
-npm run backend:test
+# 3. Run backend security & state machine tests (7/7 tests)
+cd ../backend/functions
+npm test
 
-# Run TypeScript typecheck
-npm run frontend:typecheck
+# 4. Build backend Cloud Functions TypeScript (0 errors)
+npm run build
 ```
 
 ---
@@ -111,9 +115,32 @@ You can instantly switch roles using the **top Demo Mode Banner** or on the **Si
 | :--- | :--- | :--- | :--- |
 | **Student** | `student@marwadiuniversity.ac.in` | `demo123` | Sakshi Patel (Sem 8 CE) — Cart, Preorder, Pickup Token |
 | **Faculty** | `faculty@marwadiuniversity.ac.in` | `demo123` | Prof. Rajesh Sharma — Access to Faculty Lounge (Floor 3) |
-| **Operator** | `operator1@marwadiuniversity.ac.in` | `demo123` | Ramesh Bhai — Canteen 1 & 2 Kitchen Queue, Token Verification |
-| **Operator 2** | `operator2@marwadiuniversity.ac.in` | `demo123` | Suresh Bhai — Canteen 3 & 4 |
+| **Operator 1** | `operator1@marwadiuniversity.ac.in` | `demo123` | Ramesh Bhai — Canteens 1 & 2 Kitchen Queue, Token Verification |
+| **Operator 2** | `operator2@marwadiuniversity.ac.in` | `demo123` | Suresh Bhai — Canteens 3 & 4 |
 | **Administrator** | `admin@marwadiuniversity.ac.in` | `demo123` | Campus Admin — Buildings, Roles, Settings, Audit Logs |
+
+---
+
+## 📦 Building Standalone Android APK
+
+An `eas.json` configuration is included in `frontend/` to generate an installable Android APK:
+
+### Option A: Via Expo Application Services (EAS Build - Recommended)
+```bash
+cd frontend
+npx eas-cli login
+npx eas-cli build -p android --profile preview
+```
+EAS builds the standalone APK in the cloud and provides a direct `.apk` download link.
+
+### Option B: Local Gradle Build
+```bash
+cd frontend
+npx expo prebuild --platform android
+cd android
+./gradlew assembleRelease
+```
+*Note: Due to a known Windows NDK Ninja path parsing bug with spaces in directory names, ensure your project directory path contains no spaces when compiling via local Gradle.*
 
 ---
 
@@ -129,21 +156,26 @@ MU Canteen/
 │   │   ├── services/             # Live Firebase & DemoStorage engine
 │   │   ├── context/              # AuthContext, CartContext, CampusContext
 │   │   ├── navigation/           # React Navigation role navigators
-│   │   ├── components/           # Reusable UI library (Card, Header, Badge, Modal, Input)
+│   │   ├── components/           # Reusable UI library (CompactNavGrid, Card, Modal, Input)
 │   │   ├── views/                # Role screens (Student, Operator, Admin, Auth)
 │   │   └── utils/                # Token generation, idempotency guards, INR formatters
 │   ├── tests/                    # Frontend unit tests
-│   ├── app.json                  # Android package configuration
+│   ├── eas.json                  # Standalone APK build configuration
+│   ├── app.json                  # Expo / Android configuration
 │   └── package.json
 ├── backend/                      # Firebase Backend Resources
 │   ├── firestore.rules           # Production security rules
 │   ├── firestore.indexes.json    # Composite indexes
 │   ├── firebase.json             # Firebase configuration
 │   ├── functions/                # Cloud Functions (TypeScript)
-│   ├── scripts/                  # Standalone campus seeding script
+│   ├── scripts/                  # Standalone canonical campus seeding script
 │   └── tests/                    # Backend security unit tests
 ├── docs/                         # Architecture, Firebase setup & demo guides
-└── package.json                  # Root scripts & orchestrator
+│   ├── ARCHITECTURE.md
+│   ├── DEMO_INSTRUCTIONS.md
+│   ├── FIREBASE_SETUP.md
+│   └── README.md
+└── .gitignore                    # Root gitignore
 ```
 
 ---
@@ -156,4 +188,3 @@ The codebase is modularly architected to accommodate Review 2 differentiating fe
 - [ ] **Surplus Flash Sales:** Operator food-safety verification and 50%-off instant listings
 - [ ] **Real Payment Gateway Integration:** Razorpay / Cashfree UPI & Card processing
 - [ ] **Background Push Notifications:** FCM delay alerts & order ready buzzers
-

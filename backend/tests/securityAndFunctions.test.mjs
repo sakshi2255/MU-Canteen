@@ -96,7 +96,7 @@ test('Token verification rejects tokens from wrong canteen', () => {
   }, /TOKEN_NOT_FOUND/);
 });
 
-// 3. Cancellation Policy Rule Check
+// 3. Cancellation Policy Rule Check (Firestore Rules Alignment)
 function validateCancellation(order, actorRole, actorUid) {
   if (actorRole === 'admin') return true;
 
@@ -104,26 +104,22 @@ function validateCancellation(order, actorRole, actorUid) {
     throw new Error('PERMISSION_DENIED: Can only cancel own order.');
   }
 
-  if (order.orderStatus === 'preparing' || order.orderStatus === 'ready_for_pickup') {
-    throw new Error('CANNOT_CANCEL: Food is already being prepared or is ready.');
-  }
-
-  if (order.orderStatus === 'picked_up') {
-    throw new Error('CANNOT_CANCEL: Order has already been collected.');
+  // Per Review 1 prompt & firestore.rules: Cancellation only permitted while awaiting_acceptance
+  if (order.orderStatus !== 'awaiting_acceptance') {
+    throw new Error(`CANNOT_CANCEL: Cancellation not permitted once order moves past awaiting_acceptance (current: ${order.orderStatus}).`);
   }
 
   return true;
 }
 
-test('Cancellation allowed only before food preparation starts', () => {
+test('Cancellation allowed only while awaiting_acceptance', () => {
   const studentUid = 'student-123';
   const orderAwaiting = { userId: studentUid, orderStatus: 'awaiting_acceptance' };
-  const orderAccepted = { userId: studentUid, orderStatus: 'accepted' };
   const orderPreparing = { userId: studentUid, orderStatus: 'preparing' };
   const orderReady = { userId: studentUid, orderStatus: 'ready_for_pickup' };
+  const orderPickedUp = { userId: studentUid, orderStatus: 'picked_up' };
 
   assert.equal(validateCancellation(orderAwaiting, 'student', studentUid), true);
-  assert.equal(validateCancellation(orderAccepted, 'student', studentUid), true);
 
   assert.throws(() => {
     validateCancellation(orderPreparing, 'student', studentUid);
@@ -132,5 +128,61 @@ test('Cancellation allowed only before food preparation starts', () => {
   assert.throws(() => {
     validateCancellation(orderReady, 'student', studentUid);
   }, /CANNOT_CANCEL/);
+
+  assert.throws(() => {
+    validateCancellation(orderPickedUp, 'student', studentUid);
+  }, /CANNOT_CANCEL/);
 });
 
+// 4. Operator Sequential State Machine: Accept / Decline -> Ready -> Collected
+function transitionOperatorOrder(currentStatus, action, tokenMatches = true) {
+  if (action === 'decline') {
+    if (currentStatus === 'awaiting_acceptance') return 'rejected';
+    throw new Error(`INVALID_TRANSITION: Cannot decline an order in status ${currentStatus}`);
+  }
+  if (action === 'accept') {
+    // Review 1 requirement: Accept transitions directly to preparing (no separate Start Preparing button)
+    if (currentStatus === 'awaiting_acceptance') return 'preparing';
+    throw new Error(`INVALID_TRANSITION: Cannot accept an order in status ${currentStatus}`);
+  }
+  if (action === 'ready') {
+    if (currentStatus === 'preparing') return 'ready_for_pickup';
+    throw new Error(`INVALID_TRANSITION: Cannot mark ready when not preparing`);
+  }
+  if (action === 'collected') {
+    if (currentStatus !== 'ready_for_pickup') {
+      throw new Error(`INVALID_TRANSITION: Order must be ready_for_pickup to be collected`);
+    }
+    if (!tokenMatches) {
+      throw new Error('TOKEN_MISMATCH: Invalid pickup token');
+    }
+    return 'picked_up';
+  }
+  throw new Error(`UNKNOWN_ACTION: ${action}`);
+}
+
+test('Sequential Operator Workflow: Accept -> Ready -> Collected', () => {
+  let status = 'awaiting_acceptance';
+
+  // Step 1: Accept -> directly moves to preparing
+  status = transitionOperatorOrder(status, 'accept');
+  assert.equal(status, 'preparing');
+
+  // Step 2: Ready -> moves to ready_for_pickup
+  status = transitionOperatorOrder(status, 'ready');
+  assert.equal(status, 'ready_for_pickup');
+
+  // Step 3: Collected with bad token fails
+  assert.throws(() => {
+    transitionOperatorOrder(status, 'collected', false);
+  }, /TOKEN_MISMATCH/);
+
+  // Step 4: Collected with valid token -> picked_up
+  status = transitionOperatorOrder(status, 'collected', true);
+  assert.equal(status, 'picked_up');
+});
+
+test('Operator Decline transitions awaiting_acceptance directly to rejected', () => {
+  const status = transitionOperatorOrder('awaiting_acceptance', 'decline');
+  assert.equal(status, 'rejected');
+});

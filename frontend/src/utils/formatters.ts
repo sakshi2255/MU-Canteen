@@ -2,7 +2,7 @@ import { OrderStatus, PaymentStatus, OrderType } from '../models/order';
 import { Colors } from '../theme/colors';
 
 export function formatINR(amount: number): string {
-  return `₹${amount.toFixed(0)}`;
+  return `₹${Math.round(amount)}`;
 }
 
 export function formatDateTime(isoString?: string): string {
@@ -27,20 +27,20 @@ export function formatTime(isoString?: string): string {
   }
 }
 
-export function getOrderStatusLabel(status: OrderStatus): string {
+export function getOrderStatusLabel(status: OrderStatus, role: 'student' | 'operator' | 'admin' = 'operator'): string {
   switch (status) {
     case 'awaiting_acceptance':
-      return 'Awaiting Acceptance';
+      return role === 'student' ? 'In Queue' : 'Awaiting Acceptance';
     case 'accepted':
-      return 'Accepted';
+      return 'Preparing';
     case 'preparing':
       return 'Preparing';
     case 'ready_for_pickup':
       return 'Ready for Pickup';
     case 'picked_up':
-      return 'Picked Up';
+      return 'Collected';
     case 'rejected':
-      return 'Rejected';
+      return 'Declined';
     case 'cancellation_requested':
       return 'Cancel Requested';
     case 'cancelled':
@@ -63,7 +63,6 @@ export function getOrderStatusBadge(status: OrderStatus): {
     case 'awaiting_acceptance':
       return { bg: Colors.warningLight, text: Colors.warning, border: Colors.warningBorder };
     case 'accepted':
-      return { bg: Colors.infoLight, text: Colors.info, border: Colors.infoBorder };
     case 'preparing':
       return { bg: '#FFF7ED', text: '#EA580C', border: '#FDBA74' };
     case 'ready_for_pickup':
@@ -96,4 +95,3 @@ export function getPaymentStatusBadge(status: PaymentStatus): {
       return { bg: Colors.surfaceSecondary, text: Colors.textSecondary };
   }
 }
-

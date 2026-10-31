@@ -554,7 +554,7 @@ export const INITIAL_ORDERS: Order[] = [
     total: 125,
     paymentMethod: 'cash_at_counter',
     paymentStatus: 'pending',
-    orderStatus: 'accepted',
+    orderStatus: 'preparing',
     pickupToken: 'MU-7231',
     isTokenVerified: false,
     policyVersion: '1.0-REV1',

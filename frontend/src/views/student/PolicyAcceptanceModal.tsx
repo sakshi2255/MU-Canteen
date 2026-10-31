@@ -123,7 +123,7 @@ export const PolicyAcceptanceModal: React.FC<PolicyAcceptanceModalProps> = ({
             style={styles.actionBtn}
           />
           <Button
-            title="I Agree & Continue"
+            title="Accept & Continue"
             variant="primary"
             disabled={!isChecked}
             onPress={handleConfirm}

@@ -14,29 +14,28 @@ import {
   X,
   ChefHat,
   PackageCheck,
-  MapPin,
   CalendarClock,
   Zap,
   Banknote,
   CheckCircle2,
-  Timer,
   QrCode,
+  ShieldCheck,
 } from 'lucide-react-native';
 import { Header } from '../../components/common/Header';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
+import { Input } from '../../components/common/Input';
 import { EmptyState } from '../../components/common/EmptyState';
 import { Modal } from '../../components/common/Modal';
 import { Colors } from '../../theme/colors';
 import { Spacing, BorderRadius } from '../../theme/spacing';
 import { ServiceProvider } from '../../services/serviceProvider';
 import { demoStorage } from '../../services/demo/demoStorage';
-import { Order, OrderStatus, PaymentStatus } from '../../models/order';
+import { Order, OrderStatus } from '../../models/order';
 import {
   formatINR,
   formatDateTime,
-  getOrderStatusBadge,
   getOrderStatusLabel,
 } from '../../utils/formatters';
 
@@ -49,7 +48,13 @@ export const OrderQueueScreen: React.FC<OrderQueueScreenProps> = ({ route, navig
   const { canteenId } = route.params || {};
   const [orders, setOrders] = useState<Order[]>([]);
   const [activeTab, setActiveTab] = useState<string>('all');
-  const [rejectOrderModal, setRejectOrderModal] = useState<Order | null>(null);
+  const [declineOrderModal, setDeclineOrderModal] = useState<Order | null>(null);
+
+  // Token Verification Modal for Collected stage
+  const [collectedOrderModal, setCollectedOrderModal] = useState<Order | null>(null);
+  const [tokenInput, setTokenInput] = useState('');
+  const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [isVerifying, setIsVerifying] = useState(false);
 
   const loadOrders = async () => {
     try {
@@ -77,31 +82,76 @@ export const OrderQueueScreen: React.FC<OrderQueueScreenProps> = ({ route, navig
     }
   };
 
+  // Stage 2: Accept -> transitions DIRECTLY to 'preparing' (no separate Start Preparing button)
+  const handleAcceptOrder = async (order: Order) => {
+    await handleUpdateStatus(
+      order.orderId,
+      'preparing',
+      'Operator accepted order. Automatically transitioned directly to Preparing.'
+    );
+  };
+
+  // Stage 3: Ready -> transitions from 'preparing' to 'ready_for_pickup'
+  const handleMarkReady = async (order: Order) => {
+    await handleUpdateStatus(
+      order.orderId,
+      'ready_for_pickup',
+      'Operator marked food Ready for Pickup. Starts 12-min collection window.'
+    );
+  };
+
+  // Stage 4: Collected -> verifies token and transitions to 'picked_up'
+  const handleVerifyCollected = async () => {
+    if (!collectedOrderModal) return;
+    if (!tokenInput.trim()) {
+      setVerifyError('Please enter the student pickup token.');
+      return;
+    }
+
+    setIsVerifying(true);
+    setVerifyError(null);
+
+    try {
+      await ServiceProvider.orders.verifyPickupToken(
+        collectedOrderModal.canteenId,
+        tokenInput.trim()
+      );
+      setCollectedOrderModal(null);
+      setTokenInput('');
+      loadOrders();
+      Alert.alert('Pickup Confirmed', `Order ${collectedOrderModal.orderNumber} successfully marked as Collected.`);
+    } catch (err: any) {
+      setVerifyError(err.message || 'Token verification failed.');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  // Decline path: transitions from 'awaiting_acceptance' to 'rejected'
+  const handleConfirmDecline = async () => {
+    if (!declineOrderModal) return;
+    await handleUpdateStatus(
+      declineOrderModal.orderId,
+      'rejected',
+      'Operator declined order due to kitchen capacity or ingredient shortage.'
+    );
+    setDeclineOrderModal(null);
+  };
+
   const handleMarkPaymentReceived = async (orderId: string) => {
     try {
       await ServiceProvider.orders.updatePaymentStatus(orderId, 'paid');
       loadOrders();
-      Alert.alert('Payment Recorded', 'Cash payment has been successfully recorded for this order.');
+      Alert.alert('Payment Recorded', 'Cash payment has been recorded for this order.');
     } catch (err: any) {
       Alert.alert('Payment Error', err.message);
     }
   };
 
-  const handleConfirmReject = async () => {
-    if (!rejectOrderModal) return;
-    await handleUpdateStatus(
-      rejectOrderModal.orderId,
-      'rejected',
-      'Operator rejected order due to kitchen capacity or ingredient shortage.'
-    );
-    setRejectOrderModal(null);
-  };
-
   const filterTabs = [
     { key: 'all', label: 'All Orders' },
-    { key: 'awaiting_acceptance', label: 'Awaiting' },
-    { key: 'accepted', label: 'Accepted' },
-    { key: 'preparing', label: 'In Kitchen' },
+    { key: 'awaiting_acceptance', label: 'In Queue' },
+    { key: 'preparing', label: 'Preparing' },
     { key: 'ready_for_pickup', label: 'Ready' },
     { key: 'picked_up', label: 'Collected' },
   ];
@@ -111,7 +161,6 @@ export const OrderQueueScreen: React.FC<OrderQueueScreenProps> = ({ route, navig
       case 'awaiting_acceptance':
         return 'warning';
       case 'accepted':
-        return 'info';
       case 'preparing':
         return 'primary';
       case 'ready_for_pickup':
@@ -129,6 +178,9 @@ export const OrderQueueScreen: React.FC<OrderQueueScreenProps> = ({ route, navig
 
   const filteredOrders = orders.filter((o) => {
     if (activeTab === 'all') return true;
+    if (activeTab === 'preparing') {
+      return o.orderStatus === 'preparing' || o.orderStatus === 'accepted';
+    }
     return o.orderStatus === activeTab;
   });
 
@@ -136,7 +188,7 @@ export const OrderQueueScreen: React.FC<OrderQueueScreenProps> = ({ route, navig
     <View style={styles.container}>
       <Header
         title="Kitchen Order Queue"
-        subtitle="Live Preparation & Counter Handover"
+        subtitle="Accept / Decline → Ready → Collected"
         showBack
         onBack={() => navigation.goBack()}
       />
@@ -146,7 +198,15 @@ export const OrderQueueScreen: React.FC<OrderQueueScreenProps> = ({ route, navig
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsScroll}>
           {filterTabs.map((tab) => {
             const isSelected = activeTab === tab.key;
-            const count = tab.key === 'all' ? orders.length : orders.filter((o) => o.orderStatus === tab.key).length;
+            let count = 0;
+            if (tab.key === 'all') {
+              count = orders.length;
+            } else if (tab.key === 'preparing') {
+              count = orders.filter((o) => o.orderStatus === 'preparing' || o.orderStatus === 'accepted').length;
+            } else {
+              count = orders.filter((o) => o.orderStatus === tab.key).length;
+            }
+
             return (
               <TouchableOpacity
                 key={tab.key}
@@ -166,7 +226,7 @@ export const OrderQueueScreen: React.FC<OrderQueueScreenProps> = ({ route, navig
       {filteredOrders.length === 0 ? (
         <EmptyState
           title="No Orders in this Status"
-          description="Orders matching this tab will show up here in real time."
+          description="Incoming orders will update here automatically in real time."
         />
       ) : (
         <FlatList
@@ -181,7 +241,7 @@ export const OrderQueueScreen: React.FC<OrderQueueScreenProps> = ({ route, navig
               <Card style={styles.orderCard}>
                 {/* Header Row */}
                 <View style={styles.orderHeader}>
-                  <View>
+                  <View style={{ flex: 1 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       <Text style={styles.orderNumber}>{item.orderNumber}</Text>
                       <View style={styles.tokenPill}>
@@ -189,12 +249,12 @@ export const OrderQueueScreen: React.FC<OrderQueueScreenProps> = ({ route, navig
                       </View>
                     </View>
                     <Text style={styles.customerName}>
-                      {item.userDisplayName} ({item.userRole.toUpperCase()})
+                      {item.userDisplayName} • {item.userRole.toUpperCase()}
                     </Text>
                   </View>
 
                   <Badge
-                    label={getOrderStatusLabel(item.orderStatus)}
+                    label={getOrderStatusLabel(item.orderStatus, 'operator')}
                     variant={getStatusVariant(item.orderStatus)}
                     size="sm"
                   />
@@ -205,7 +265,7 @@ export const OrderQueueScreen: React.FC<OrderQueueScreenProps> = ({ route, navig
                   {item.orderType === 'instant' ? (
                     <View style={styles.instantTag}>
                       <Zap size={13} color={Colors.primary} />
-                      <Text style={styles.instantTagText}>INSTANT PREPARATION</Text>
+                      <Text style={styles.instantTagText}>INSTANT ORDER</Text>
                     </View>
                   ) : (
                     <View style={styles.preorderTag}>
@@ -231,18 +291,17 @@ export const OrderQueueScreen: React.FC<OrderQueueScreenProps> = ({ route, navig
                 <View style={styles.billRow}>
                   <Text style={styles.billTotal}>Total: {formatINR(item.total)}</Text>
                   <Text style={styles.paymentMethodLabel}>
-                    Method: {item.paymentMethod === 'razorpay' ? 'Razorpay Online' : item.paymentMethod.replace('_', ' ').toUpperCase()}
+                    Payment: {item.paymentMethod === 'razorpay' ? 'Razorpay' : item.paymentMethod.replace('_', ' ').toUpperCase()}
                   </Text>
                 </View>
 
-                {/* Payment Action / Status Controls (Cash Received vs Online Received) */}
+                {/* Cash vs Online Payment Status Indicator */}
                 <View style={styles.paymentControlSection}>
                   {isCash ? (
-                    // Cash at counter
                     isPaid ? (
                       <View style={styles.paymentButtonPaid}>
-                        <CheckCircle2 size={15} color="#FFFFFF" />
-                        <Text style={styles.paymentButtonPaidText}>Cash Payment Received (₹{item.total})</Text>
+                        <CheckCircle2 size={14} color="#FFFFFF" />
+                        <Text style={styles.paymentButtonPaidText}>Cash Payment Received ({formatINR(item.total)})</Text>
                       </View>
                     ) : (
                       <TouchableOpacity
@@ -251,87 +310,91 @@ export const OrderQueueScreen: React.FC<OrderQueueScreenProps> = ({ route, navig
                         style={styles.markCashBtn}
                       >
                         <Banknote size={15} color="#059669" />
-                        <Text style={styles.markCashBtnText}>Mark Cash Payment Received (₹{item.total})</Text>
+                        <Text style={styles.markCashBtnText}>Mark Cash Payment Received ({formatINR(item.total)})</Text>
                       </TouchableOpacity>
                     )
                   ) : (
-                    // Online payment (Razorpay / UPI / Card)
                     isPaid ? (
                       <View style={styles.paymentButtonPaid}>
-                        <CheckCircle2 size={15} color="#FFFFFF" />
-                        <Text style={styles.paymentButtonPaidText}>
-                          Payment Received ({item.paymentMethod === 'razorpay' ? 'Razorpay' : 'Online'}) ✓
-                        </Text>
+                        <CheckCircle2 size={14} color="#FFFFFF" />
+                        <Text style={styles.paymentButtonPaidText}>Payment Confirmed (Online / Razorpay)</Text>
                       </View>
                     ) : (
                       <View style={styles.paymentButtonPendingGrey}>
-                        <Clock size={15} color="#6B7280" />
+                        <Clock size={14} color="#6B7280" />
                         <Text style={styles.paymentButtonPendingText}>Payment Pending (Waiting for Gateway)</Text>
                       </View>
                     )
                   )}
                 </View>
 
-                {/* Ordering Lifecycle Action Buttons */}
+                {/* EXACT REQUIRED WORKFLOW: Accept / Decline → Ready → Collected */}
                 <View style={styles.actionRow}>
+                  {/* Stage 1: In Queue -> Accept (auto-moves to Preparing) or Decline */}
                   {item.orderStatus === 'awaiting_acceptance' && (
                     <>
                       <Button
-                        title="Reject"
+                        title="Decline"
                         variant="outline"
                         size="sm"
                         icon={<X size={14} color={Colors.danger} />}
-                        onPress={() => setRejectOrderModal(item)}
+                        onPress={() => setDeclineOrderModal(item)}
                         style={{ flex: 1, borderColor: Colors.danger }}
                       />
                       <Button
-                        title="Accept Order"
+                        title="Accept"
                         variant="primary"
                         size="sm"
                         icon={<Check size={14} color="#FFFFFF" />}
-                        onPress={() => handleUpdateStatus(item.orderId, 'accepted', 'Canteen operator accepted order.')}
+                        onPress={() => handleAcceptOrder(item)}
                         style={{ flex: 2 }}
                       />
                     </>
                   )}
 
-                  {item.orderStatus === 'accepted' && (
+                  {/* Stage 2: Preparing -> Next action is ONLY Ready */}
+                  {(item.orderStatus === 'preparing' || item.orderStatus === 'accepted') && (
                     <Button
-                      title="Start Kitchen Prep"
-                      variant="primary"
-                      size="sm"
-                      icon={<ChefHat size={15} color="#FFFFFF" />}
-                      onPress={() => handleUpdateStatus(item.orderId, 'preparing', 'Kitchen has started preparing food.')}
-                      style={{ flex: 1 }}
-                    />
-                  )}
-
-                  {item.orderStatus === 'preparing' && (
-                    <Button
-                      title="Mark Food Ready (Starts 12-Min Collect Window)"
+                      title="Ready"
                       variant="primary"
                       size="sm"
                       icon={<PackageCheck size={15} color="#FFFFFF" />}
-                      onPress={() => handleUpdateStatus(item.orderId, 'ready_for_pickup', 'Food is ready for pickup at the counter.')}
+                      onPress={() => handleMarkReady(item)}
                       style={{ flex: 1, backgroundColor: '#059669' }}
                     />
                   )}
 
+                  {/* Stage 3: Ready for Pickup -> Next action is ONLY Collected */}
                   {item.orderStatus === 'ready_for_pickup' && (
                     <Button
-                      title="Verify Token & Handover"
+                      title="Collected"
                       variant="primary"
                       size="sm"
                       icon={<QrCode size={15} color="#FFFFFF" />}
-                      onPress={() => navigation.navigate('PickupVerificationScreen', { canteenId })}
-                      style={{ flex: 1 }}
+                      onPress={() => {
+                        setCollectedOrderModal(item);
+                        setTokenInput('');
+                        setVerifyError(null);
+                      }}
+                      style={{ flex: 1, backgroundColor: Colors.primaryDark }}
                     />
                   )}
 
+                  {/* Stage 4: Picked Up -> Complete state, disabled */}
                   {item.orderStatus === 'picked_up' && (
                     <View style={styles.pickedUpBanner}>
                       <Check size={14} color={Colors.success} />
-                      <Text style={styles.pickedUpText}>Order collected by student • Token verified</Text>
+                      <Text style={styles.pickedUpText}>Collected by Student • Token Verified</Text>
+                    </View>
+                  )}
+
+                  {/* Terminal negative states */}
+                  {(item.orderStatus === 'rejected' || item.orderStatus === 'cancelled') && (
+                    <View style={styles.terminalBanner}>
+                      <X size={14} color={Colors.danger} />
+                      <Text style={styles.terminalText}>
+                        Order {item.orderStatus === 'rejected' ? 'Declined' : 'Cancelled'}
+                      </Text>
                     </View>
                   )}
                 </View>
@@ -341,30 +404,83 @@ export const OrderQueueScreen: React.FC<OrderQueueScreenProps> = ({ route, navig
         />
       )}
 
-      {/* Reject Reason Confirmation Modal */}
+      {/* Decline Confirmation Modal */}
       <Modal
-        visible={Boolean(rejectOrderModal)}
-        onClose={() => setRejectOrderModal(null)}
-        title="REJECT INCOMING ORDER"
+        visible={Boolean(declineOrderModal)}
+        onClose={() => setDeclineOrderModal(null)}
+        title="DECLINE ORDER"
       >
         <View style={{ gap: 12 }}>
-          <Text style={{ fontSize: 13, color: Colors.textPrimary }}>
-            Are you sure you want to reject order {rejectOrderModal?.orderNumber}?
+          <Text style={{ fontSize: 13, color: Colors.textPrimary, lineHeight: 18 }}>
+            Are you sure you want to decline order {declineOrderModal?.orderNumber}?
           </Text>
           <Text style={{ fontSize: 12, color: Colors.textSecondary }}>
-            The student will be notified and any online payment will be marked refunded.
+            The student will be notified immediately that the order was declined.
           </Text>
           <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
             <Button
               title="Cancel"
               variant="secondary"
-              onPress={() => setRejectOrderModal(null)}
+              onPress={() => setDeclineOrderModal(null)}
               style={{ flex: 1 }}
             />
             <Button
-              title="Reject Order"
+              title="Decline Order"
               variant="danger"
-              onPress={handleConfirmReject}
+              onPress={handleConfirmDecline}
+              style={{ flex: 1 }}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Collected Token Verification Modal */}
+      <Modal
+        visible={Boolean(collectedOrderModal)}
+        onClose={() => setCollectedOrderModal(null)}
+        title="CONFIRM ORDER PICKUP"
+      >
+        <View style={{ gap: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <ShieldCheck size={20} color={Colors.primary} />
+            <Text style={{ fontSize: 13, fontWeight: '700', color: Colors.textPrimary }}>
+              Verify Token for {collectedOrderModal?.orderNumber}
+            </Text>
+          </View>
+
+          <Text style={{ fontSize: 12, color: Colors.textSecondary, lineHeight: 16 }}>
+            Ask student for their 4-character pickup token (e.g. {collectedOrderModal?.pickupToken}) to mark as Collected:
+          </Text>
+
+          <Input
+            placeholder="e.g. MU-1234 or 1234"
+            value={tokenInput}
+            onChangeText={(t) => {
+              setTokenInput(t.toUpperCase());
+              setVerifyError(null);
+            }}
+            autoCapitalize="characters"
+            style={{ fontSize: 18, fontWeight: '800', textAlign: 'center', letterSpacing: 2, color: Colors.primaryDark }}
+          />
+
+          {verifyError && (
+            <Text style={{ fontSize: 12, color: Colors.danger, fontWeight: '600' }}>
+              {verifyError}
+            </Text>
+          )}
+
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 6 }}>
+            <Button
+              title="Cancel"
+              variant="secondary"
+              onPress={() => setCollectedOrderModal(null)}
+              style={{ flex: 1 }}
+            />
+            <Button
+              title={isVerifying ? 'Verifying...' : 'Mark Collected'}
+              variant="primary"
+              loading={isVerifying}
+              onPress={handleVerifyCollected}
               style={{ flex: 1 }}
             />
           </View>
@@ -576,12 +692,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: 6,
+    paddingVertical: 8,
     flex: 1,
+    backgroundColor: '#F0FDF4',
+    borderRadius: BorderRadius.sm,
   },
   pickedUpText: {
     fontSize: 12,
     fontWeight: '700',
     color: Colors.success,
+  },
+  terminalBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    flex: 1,
+    backgroundColor: '#FEF2F2',
+    borderRadius: BorderRadius.sm,
+  },
+  terminalText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.danger,
   },
 });

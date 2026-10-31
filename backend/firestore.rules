@@ -74,26 +74,26 @@ service cloud.firestore {
         isAdmin()
       );
 
-      // Student places order
+      // Student places order (In Queue or auto-accepted to Preparing)
       allow create: if isSignedIn() &&
         request.resource.data.userId == request.auth.uid &&
-        request.resource.data.orderStatus in ['awaiting_acceptance', 'accepted'];
+        request.resource.data.orderStatus in ['awaiting_acceptance', 'preparing'];
 
       // State transitions validation
       allow update: if isSignedIn() && (
         isAdmin() ||
-        // Operator actions: Accept, Reject, Prepare, Ready, Pickup
+        // Operator actions: Accept (to Preparing), Decline (to Rejected), Ready, Collected (Picked Up)
         (
           isAssignedOperator(resource.data.canteenId) &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'orderStatus', 'isTokenVerified', 'updatedAt', 'rejectionReason', 'paymentStatus'
+            'orderStatus', 'isTokenVerified', 'updatedAt', 'rejectionReason', 'paymentStatus', 'readyAt'
           ])
         ) ||
-        // Student cancellation ONLY before kitchen preparation begins
+        // Student cancellation ONLY before kitchen preparation begins (In Queue)
         (
           resource.data.userId == request.auth.uid &&
           request.resource.data.orderStatus == 'cancelled' &&
-          resource.data.orderStatus in ['awaiting_acceptance', 'accepted'] &&
+          resource.data.orderStatus == 'awaiting_acceptance' &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'orderStatus', 'cancellationRequestedAt', 'cancellationReason', 'updatedAt', 'paymentStatus'
           ])
@@ -133,4 +133,3 @@ service cloud.firestore {
     }
   }
 }
-

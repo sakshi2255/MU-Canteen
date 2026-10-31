@@ -19,14 +19,15 @@ type OrderStatus =
   | 'uncollected'
   | 'expired';
 
-const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
-  awaiting_acceptance: ['accepted', 'rejected', 'cancelled', 'expired'],
+export const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+  // Exact required workflow: Awaiting Acceptance -> Preparing (Accept), Rejected (Decline), Cancelled
+  awaiting_acceptance: ['preparing', 'accepted', 'rejected', 'cancelled', 'expired'],
   accepted: ['preparing', 'cancelled', 'rejected'],
   preparing: ['ready_for_pickup'],
   ready_for_pickup: ['picked_up', 'uncollected'],
   picked_up: [],
   rejected: [],
-  cancellation_requested: ['cancelled', 'accepted', 'rejected'],
+  cancellation_requested: ['cancelled', 'rejected'],
   cancelled: [],
   uncollected: [],
   expired: [],
@@ -95,8 +96,9 @@ export const createOrderSecure = functions.https.onCall(async (data, context) =>
   }
   const pickupToken = `MU-${code}`;
 
+  // If auto-accepted, order immediately starts in 'preparing'
   const initialStatus: OrderStatus =
-    canteenData.acceptanceMode === 'auto' ? 'accepted' : 'awaiting_acceptance';
+    canteenData.acceptanceMode === 'auto' ? 'preparing' : 'awaiting_acceptance';
 
   const newOrder = {
     orderId,
@@ -246,4 +248,3 @@ export const cancelOrderSecure = functions.https.onCall(async (data, context) =>
 
   return { success: true, orderId };
 });
-

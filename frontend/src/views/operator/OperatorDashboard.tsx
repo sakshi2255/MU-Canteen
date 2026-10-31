@@ -25,6 +25,7 @@ import { Header } from '../../components/common/Header';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
+import { CompactNavGrid, NavCardItem } from '../../components/common/CompactNavGrid';
 import { DemoRoleSwitcherModal } from '../../components/common/DemoRoleSwitcherModal';
 import { CanteenOpenCloseModal } from './CanteenOpenCloseModal';
 import { Colors } from '../../theme/colors';
@@ -178,42 +179,53 @@ export const OperatorDashboard: React.FC<OperatorDashboardProps> = ({ navigation
           </Card>
         )}
 
-        {/* Action Shortcuts Grid */}
-        <View style={styles.quickActionsGrid}>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate('OrderQueueScreen', { canteenId: currentCanteen?.canteenId })}
-            style={[styles.actionTile, { backgroundColor: Colors.primary }]}
-          >
-            <View style={styles.actionTileTop}>
-              <ListOrdered size={24} color="#FFFFFF" />
-              {awaitingCount > 0 && (
-                <View style={styles.actionTileBadge}>
-                  <Text style={styles.actionTileBadgeText}>{awaitingCount} NEW</Text>
-                </View>
-              )}
-            </View>
-            <Text style={styles.actionTileTitle}>Order Queue</Text>
-            <Text style={styles.actionTileSub}>{orders.length} total orders today</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate('PickupVerificationScreen', { canteenId: currentCanteen?.canteenId })}
-            style={[styles.actionTile, { backgroundColor: Colors.charcoal }]}
-          >
-            <View style={styles.actionTileTop}>
-              <QrCode size={24} color="#FFFFFF" />
-              {readyCount > 0 && (
-                <View style={[styles.actionTileBadge, { backgroundColor: Colors.warning }]}>
-                  <Text style={[styles.actionTileBadgeText, { color: '#000000' }]}>{readyCount} READY</Text>
-                </View>
-              )}
-            </View>
-            <Text style={styles.actionTileTitle}>Verify Token</Text>
-            <Text style={styles.actionTileSub}>Counter pickup scanner</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Canteen Navigation Cards - Marwadi University Style */}
+        <CompactNavGrid
+          title="Operator Actions"
+          items={[
+            {
+              id: 'queue',
+              label: 'Order Queue',
+              subtitle: `${orders.length} Orders Today`,
+              icon: <ListOrdered size={18} color={Colors.primary} />,
+              badge: awaitingCount > 0 ? `${awaitingCount} NEW` : undefined,
+              badgeVariant: 'danger',
+              onPress: () => navigation.navigate('OrderQueueTab', { canteenId: currentCanteen?.canteenId }),
+            },
+            {
+              id: 'menu',
+              label: 'Manage Menu',
+              subtitle: 'Availability & Prices',
+              icon: <Utensils size={18} color={Colors.primary} />,
+              onPress: () => navigation.navigate('MenuManagementTab', { canteenId: currentCanteen?.canteenId }),
+            },
+            {
+              id: 'availability',
+              label: 'Canteen Availability',
+              subtitle: currentCanteen?.isOpen ? 'Currently Open' : 'Currently Closed',
+              icon: <Store size={18} color={Colors.primary} />,
+              badge: currentCanteen?.isOpen ? 'OPEN' : 'CLOSED',
+              badgeVariant: currentCanteen?.isOpen ? 'success' : 'warning',
+              onPress: () => setOpenModalVisible(true),
+            },
+            {
+              id: 'verify',
+              label: 'Pickup Verification',
+              subtitle: 'Scan Student Token',
+              icon: <QrCode size={18} color={Colors.primary} />,
+              badge: readyCount > 0 ? `${readyCount} Ready` : undefined,
+              badgeVariant: 'warning',
+              onPress: () => navigation.navigate('PickupVerificationTab', { canteenId: currentCanteen?.canteenId }),
+            },
+            {
+              id: 'reports',
+              label: 'Reports & Analytics',
+              subtitle: 'Daily Sales & Items',
+              icon: <BarChart3 size={18} color={Colors.primary} />,
+              onPress: () => navigation.navigate('OperatorReportsScreen', { canteenId: currentCanteen?.canteenId }),
+            },
+          ]}
+        />
 
         {/* Real-time Order Pipeline Metrics */}
         <View style={styles.section}>
