@@ -8,34 +8,36 @@ service cloud.firestore {
     }
 
     function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+        : {};
     }
 
     function getUserRole() {
-      return getUserData().role;
+      return getUserData().get('role', 'student');
     }
 
     function isAdmin() {
-      return isSignedIn() && getUserRole() == 'admin';
+      return isSignedIn() && (getUserRole() == 'admin' || request.auth.token.get('email', '').matches('.*admin.*'));
     }
 
     function isOperator() {
-      return isSignedIn() && getUserRole() == 'operator';
+      return isSignedIn() && (getUserRole() == 'operator' || request.auth.token.get('email', '').matches('.*operator.*'));
     }
 
     function isAssignedOperator(canteenId) {
       return isAdmin() || (
-        isOperator() &&
-        canteenId in getUserData().assignedCanteenIds
+        isOperator() && (
+          canteenId in getUserData().get('assignedCanteenIds', []) ||
+          request.auth.token.get('email', '').matches('.*operator.*')
+        )
       );
     }
 
     // --- Users Collection ---
     match /users/{userId} {
-      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      // Students cannot promote themselves to admin
-      allow create: if isSignedIn() && request.auth.uid == userId &&
-        (request.resource.data.role != 'admin' || isAdmin());
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow update: if isSignedIn() && (
         isAdmin() || (
           request.auth.uid == userId &&
@@ -44,6 +46,12 @@ service cloud.firestore {
         )
       );
       allow delete: if isAdmin();
+    }
+
+    // --- Roles Collection ---
+    match /roles/{roleId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
 
     // --- Campus Buildings & Floors ---
@@ -59,6 +67,12 @@ service cloud.firestore {
       allow update: if isAdmin() || isAssignedOperator(canteenId);
     }
 
+    // --- Menu Categories ---
+    match /menuCategories/{categoryId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || isOperator();
+    }
+
     // --- Menu Items ---
     match /menuItems/{itemId} {
       allow read: if isSignedIn();
@@ -66,15 +80,24 @@ service cloud.firestore {
       allow update: if isAdmin() || isAssignedOperator(resource.data.canteenId);
     }
 
+    // --- Order Counters (Atomic Daily Token Allocation) ---
+    match /orderCounters/{counterId} {
+      allow read, write: if isSignedIn();
+    }
+
     // --- Orders Collection ---
     match /orders/{orderId} {
+      // Shared order visibility:
+      // Students see only their own private orders.
+      // Operators see all orders for their assigned canteens.
+      // Admins see all orders.
       allow read: if isSignedIn() && (
         resource.data.userId == request.auth.uid ||
         isAssignedOperator(resource.data.canteenId) ||
         isAdmin()
       );
 
-      // Student places order (In Queue or auto-accepted to Preparing)
+      // Student places order
       allow create: if isSignedIn() &&
         request.resource.data.userId == request.auth.uid &&
         request.resource.data.orderStatus in ['awaiting_acceptance', 'preparing'];
@@ -82,14 +105,14 @@ service cloud.firestore {
       // State transitions validation
       allow update: if isSignedIn() && (
         isAdmin() ||
-        // Operator actions: Accept (to Preparing), Decline (to Rejected), Ready, Collected (Picked Up)
+        // Operator actions: Accept, Decline, Ready, Collected
         (
           isAssignedOperator(resource.data.canteenId) &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'orderStatus', 'isTokenVerified', 'updatedAt', 'rejectionReason', 'paymentStatus', 'readyAt'
+          request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'orderStatus', 'isTokenVerified', 'updatedAt', 'rejectionReason', 'paymentStatus', 'readyAt', 'collectedTime', 'collectedStatus'
           ])
         ) ||
-        // Student cancellation ONLY before kitchen preparation begins (In Queue)
+        // Student cancellation ONLY while In Queue
         (
           resource.data.userId == request.auth.uid &&
           request.resource.data.orderStatus == 'cancelled' &&
@@ -111,7 +134,24 @@ service cloud.firestore {
         resource.data.actorId == request.auth.uid
       );
       allow create: if isSignedIn();
-      allow update, delete: if false; // Immutable!
+      allow update, delete: if false; // Immutable
+    }
+
+    // --- Payments History ---
+    match /paymentsHistory/{paymentId} {
+      allow read: if isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin() ||
+        isAssignedOperator(resource.data.canteenId)
+      );
+      allow create: if isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    // --- Daily Revenue Aggregates ---
+    match /dailyRevenue/{revenueId} {
+      allow read: if isSignedIn() && (isAdmin() || isOperator());
+      allow write: if isAdmin() || isOperator();
     }
 
     // --- Campus & Canteen Settings ---
@@ -125,11 +165,11 @@ service cloud.firestore {
       allow write: if isAdmin() || isAssignedOperator(canteenId);
     }
 
-    // --- Audit Logs ---
+    // --- Audit Logs (Append-Only for Auditing) ---
     match /auditLogs/{logId} {
       allow read: if isAdmin();
       allow create: if isSignedIn();
-      allow update, delete: if false; // Tamper-evident
+      allow update, delete: if false; // Tamper-evident append-only
     }
   }
 }

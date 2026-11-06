@@ -34,8 +34,23 @@ export const ALLOWED_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
 };
 
 /**
+ * Returns current date string formatted as YYYY-MM-DD in Asia/Kolkata timezone.
+ */
+function getKolkataDateString(): string {
+  const d = new Date();
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return formatter.format(d); // e.g. "2026-11-03"
+}
+
+/**
  * Trusted order creation handler
  * Re-validates live menu item prices, item availability, and canteen open status.
+ * Atomically allocates sequential daily numeric token per canteen (resets daily in Asia/Kolkata).
  */
 export const createOrderSecure = functions.https.onCall(async (data, context) => {
   if (!context.auth) {
@@ -85,59 +100,93 @@ export const createOrderSecure = functions.https.onCall(async (data, context) =>
     });
   }
 
+  const todayStr = getKolkataDateString();
+  const counterRef = db.collection('orderCounters').doc(`${canteenId}_${todayStr}`);
   const orderId = `ord_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-  const orderNumber = `#MU-${Math.floor(1000 + Math.random() * 9000)}`;
-
-  // Pickup token generator
-  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-  let code = '';
-  for (let i = 0; i < 4; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  const pickupToken = `MU-${code}`;
 
   // If auto-accepted, order immediately starts in 'preparing'
   const initialStatus: OrderStatus =
     canteenData.acceptanceMode === 'auto' ? 'preparing' : 'awaiting_acceptance';
 
-  const newOrder = {
-    orderId,
-    orderNumber,
-    userId: context.auth.uid,
-    userDisplayName: context.auth.token.name || 'Student',
-    canteenId,
-    canteenName: canteenData.name,
-    buildingName: canteenData.buildingName,
-    floor: canteenData.floor,
-    orderType: orderType || 'instant',
-    itemsSnapshot,
-    subtotal: calculatedSubtotal,
-    total: calculatedSubtotal,
-    paymentMethod: data.paymentMethod || 'simulated_upi',
-    paymentStatus: data.paymentMethod === 'cash_at_counter' ? 'pending' : 'paid',
-    orderStatus: initialStatus,
-    pickupTime: pickupTime || null,
-    pickupToken,
-    isTokenVerified: false,
-    policyVersion: policyVersion || null,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  };
+  // Atomic transaction to allocate unique sequential daily token
+  const allocated = await db.runTransaction(async (transaction) => {
+    const counterSnap = await transaction.get(counterRef);
+    let nextDailyToken = 1;
+    let lifetimeCount = 1;
 
-  await db.collection('orders').doc(orderId).set(newOrder);
+    if (counterSnap.exists) {
+      const cData = counterSnap.data()!;
+      nextDailyToken = (cData.lastTokenNumber || 0) + 1;
+      lifetimeCount = (cData.lifetimeOrderCount || 0) + 1;
+    }
+
+    transaction.set(
+      counterRef,
+      {
+        canteenId,
+        tokenDate: todayStr,
+        lastTokenNumber: nextDailyToken,
+        lifetimeOrderCount: lifetimeCount,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    const orderNumber = `#${nextDailyToken}`;
+    const pickupToken = `MU-${nextDailyToken.toString().padStart(4, '0')}`;
+
+    const orderRecord = {
+      orderId,
+      orderNumber,
+      dailyTokenNumber: nextDailyToken,
+      tokenDate: todayStr,
+      lifetimeOrderCount: lifetimeCount,
+      userId: context.auth!.uid,
+      userDisplayName: context.auth!.token.name || 'Student',
+      userRole: context.auth!.token.role || 'student',
+      canteenId,
+      canteenName: canteenData.name,
+      buildingName: canteenData.buildingName,
+      floor: canteenData.floor,
+      orderType: orderType || 'instant',
+      itemsSnapshot,
+      subtotal: calculatedSubtotal,
+      total: calculatedSubtotal,
+      paymentMethod: data.paymentMethod || 'simulated_upi',
+      paymentStatus: data.paymentMethod === 'cash_at_counter' ? 'pending' : 'paid',
+      orderStatus: initialStatus,
+      pickupTime: pickupTime || null,
+      pickupToken,
+      isTokenVerified: false,
+      policyVersion: policyVersion || null,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    const newOrderRef = db.collection('orders').doc(orderId);
+    transaction.set(newOrderRef, orderRecord);
+
+    return orderRecord;
+  });
 
   // Record audit log
   await db.collection('auditLogs').add({
     actorId: context.auth.uid,
+    actorNameSnapshot: context.auth.token.name || 'Student',
     actorRole: 'student',
     action: 'ORDER_CREATED',
     entityType: 'order',
     entityId: orderId,
     timestamp: admin.firestore.FieldValue.serverTimestamp(),
-    details: { orderNumber, total: calculatedSubtotal, orderType },
+    description: `Order ${allocated.orderNumber} placed for ${canteenData.name} (Token #${allocated.dailyTokenNumber})`,
+    details: {
+      dailyTokenNumber: allocated.dailyTokenNumber,
+      total: calculatedSubtotal,
+      orderType,
+    },
   });
 
-  return newOrder;
+  return allocated;
 });
 
 /**
@@ -187,6 +236,8 @@ export const verifyPickupTokenSecure = functions.https.onCall(async (data, conte
   await orderDoc.ref.update({
     orderStatus: 'picked_up',
     isTokenVerified: true,
+    collectedTime: admin.firestore.FieldValue.serverTimestamp(),
+    collectedStatus: 'collected',
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
@@ -198,6 +249,17 @@ export const verifyPickupTokenSecure = functions.https.onCall(async (data, conte
     newStatus: 'picked_up',
     timestamp: admin.firestore.FieldValue.serverTimestamp(),
     note: `Token ${formattedToken} verified at counter.`,
+  });
+
+  await db.collection('auditLogs').add({
+    actorId: context.auth.uid,
+    actorNameSnapshot: context.auth.token.name || 'Operator',
+    actorRole: 'operator',
+    action: 'ORDER_COLLECTED',
+    entityType: 'order',
+    entityId: orderData.orderId,
+    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    description: `Order ${orderData.orderNumber} verified and collected at counter.`,
   });
 
   return { success: true, orderId: orderData.orderId, orderNumber: orderData.orderNumber };
@@ -227,10 +289,10 @@ export const cancelOrderSecure = functions.https.onCall(async (data, context) =>
     throw new functions.https.HttpsError('permission-denied', 'You can only cancel your own orders.');
   }
 
-  if (['preparing', 'ready_for_pickup', 'picked_up'].includes(orderData.orderStatus)) {
+  if (orderData.orderStatus !== 'awaiting_acceptance') {
     throw new functions.https.HttpsError(
       'failed-precondition',
-      'Cannot cancel: The kitchen has already started preparation or the order is ready.'
+      `Cannot cancel: Orders can only be cancelled while In Queue (current: ${orderData.orderStatus}).`
     );
   }
 
@@ -244,6 +306,17 @@ export const cancelOrderSecure = functions.https.onCall(async (data, context) =>
     paymentStatus,
     cancellationReason: reason || 'Student requested cancellation prior to kitchen prep.',
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  await db.collection('auditLogs').add({
+    actorId: context.auth.uid,
+    actorNameSnapshot: context.auth.token.name || 'Student',
+    actorRole: 'student',
+    action: 'ORDER_CANCELLED',
+    entityType: 'order',
+    entityId: orderId,
+    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+    description: `Order ${orderData.orderNumber} cancelled by student while In Queue.`,
   });
 
   return { success: true, orderId };

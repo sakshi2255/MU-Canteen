@@ -32,7 +32,10 @@ export interface OrderItemSnapshot {
 
 export interface Order {
   orderId: string;
-  orderNumber: string; // User-facing order code (e.g., #MU-1042)
+  orderNumber: string; // User-facing order code (e.g., #1 or #MU-1042)
+  dailyTokenNumber?: number; // Numeric daily token (starts at 1 per canteen per day)
+  tokenDate?: string; // Date string for daily reset (YYYY-MM-DD in Asia/Kolkata)
+  lifetimeOrderCount?: number;
   userId: string;
   userDisplayName: string;
   userRole: string;
@@ -48,9 +51,11 @@ export interface Order {
   paymentStatus: PaymentStatus;
   orderStatus: OrderStatus;
   pickupTime?: string; // Scheduled pickup slot string (e.g. "1:15 PM - 1:30 PM")
-  pickupToken: string; // Secure pickup verification token (e.g. "MU-7842")
+  pickupToken: string; // Secure pickup verification token (e.g. "MU-0001")
   isTokenVerified: boolean;
   readyAt?: string; // Timestamp when food was marked ready (starts 12-min window)
+  collectedTime?: string;
+  collectedStatus?: string;
   paymentTransactionId?: string; // Razorpay payment ID (e.g. "pay_mu_928192")
   policyVersion?: string;
   policyAcceptedAt?: string;

@@ -33,8 +33,23 @@
         { "fieldPath": "isActive", "order": "ASCENDING" },
         { "fieldPath": "category", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "auditLogs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "entityType", "order": "ASCENDING" },
+        { "fieldPath": "timestamp", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "orderCounters",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "canteenId", "order": "ASCENDING" },
+        { "fieldPath": "tokenDate", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
 }
-
